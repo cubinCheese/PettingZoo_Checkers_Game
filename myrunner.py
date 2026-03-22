@@ -55,7 +55,8 @@ def run_episode(seed=42, render_mode="human", max_steps=300):
     print(f"Final rewards: {last_rewards}")
     return step_count, last_rewards
 
-
+# Run a single episode using a trained policy, printing out the final rewards at the end.
+# Uses the provided policy to select actions, with an optional epsilon for exploration.
 def run_trained_episode(policy, seed=42, render_mode="human", max_steps=300, epsilon=0.0):
 
     env = CustomEnvironment(render_mode=render_mode)
@@ -64,6 +65,7 @@ def run_trained_episode(policy, seed=42, render_mode="human", max_steps=300, eps
     step_count = 0
     last_rewards = {agent: 0.0 for agent in env.possible_agents}
 
+    # Run the episode
     while env.agents and step_count < max_steps:
         agent = env.current_agent
         action = policy.act(observations[agent], agent, epsilon=epsilon)
@@ -73,12 +75,13 @@ def run_trained_episode(policy, seed=42, render_mode="human", max_steps=300, eps
 
         if any(terminations.values()) or any(truncations.values()):
             break
-
+    
+    # The winning player will have a reward of 1, the losing player will have a reward of -1,
     print(f"Trained episode finished in {step_count} steps")
     print(f"Final rewards: {last_rewards}")
     return step_count, last_rewards
 
-
+# Run multiple episodes and aggregate results, with options for random or trained policy.
 def run_many_episodes(mode, episodes, seed, render_mode, max_steps, model_path):
     cumulative_rewards = {"player_0": 0.0, "player_1": 0.0}
     cumulative_steps = 0
@@ -88,16 +91,21 @@ def run_many_episodes(mode, episodes, seed, render_mode, max_steps, model_path):
     epsilon_start = 0.20
     epsilon_end = 0.02
     epsilon_decay = 0.995
+
+    # If using a trained policy, load the model before running episodes
     if mode == "trained":
         cfg = ACConfig(episodes=0, seed=seed)
         policy = ActorCriticSelfPlay(CustomEnvironment, cfg)
         policy.load(model_path)
 
+    # Run the episodes
     for ep in range(1, episodes + 1):
         print("=" * 60)
         print(f"Episode {ep}/{episodes}")
 
         ep_seed = seed + ep - 1
+
+        # Run the episode with the appropriate policy based on the mode
         if mode == "trained":
             episode_epsilon = max(epsilon_end, epsilon_start * (epsilon_decay ** (ep - 1)))
             print(f"Epsilon: {episode_epsilon:.3f}")
@@ -115,10 +123,12 @@ def run_many_episodes(mode, episodes, seed, render_mode, max_steps, model_path):
                 max_steps=max_steps,
             )
 
+        # Aggregate results
         cumulative_steps += step_count
         for agent in cumulative_rewards:
             cumulative_rewards[agent] += float(rewards.get(agent, 0.0))
 
+        # Determine the winner for this episode based on rewards
         p0_reward = float(rewards.get("player_0", 0.0))
         p1_reward = float(rewards.get("player_1", 0.0))
         if p0_reward > p1_reward:
@@ -128,6 +138,7 @@ def run_many_episodes(mode, episodes, seed, render_mode, max_steps, model_path):
         else:
             wins["draw"] += 1
 
+    # Print final summary
     print("=" * 60)
     print("Final Summary")
     print(f"Total episodes: {episodes}")
@@ -148,7 +159,7 @@ def run_many_episodes(mode, episodes, seed, render_mode, max_steps, model_path):
         f"draw: {wins['draw']}"
     )
 
-
+# Main entry point with argument parsing and logging setup
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run checkers env with random or trained policy")
     parser.add_argument("--mode", choices=["random", "trained"], default="trained")

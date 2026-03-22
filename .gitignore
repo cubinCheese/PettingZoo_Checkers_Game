@@ -22,7 +22,7 @@ dist/
 .ipynb_checkpoints/
 
 # Logs and runtime artifacts
-*.log
+# *.log
 checker_runner_output.log
 trained_sample_run.log
 trained_summary_only.log

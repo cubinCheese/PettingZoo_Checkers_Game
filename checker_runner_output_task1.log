@@ -1,0 +1,59 @@
+Logging terminal output to checker_runner_output.log
+  0 1 2 3 4 5
+0 . b . b . b
+1 b . b . b .
+2 . . . . . .
+3 . . . . . .
+4 . r . r . r
+5 r . r . r .
+Turn: player_0
+  0 1 2 3 4 5
+0 . b . b . b
+1 b . b . b .
+2 . . . . . .
+3 . . . . r .
+4 . r . . . r
+5 r . r . r .
+Turn: player_1
+  0 1 2 3 4 5
+0 . b . b . b
+1 b . b . . .
+2 . . . . . b
+3 . . . . r .
+4 . r . . . r
+5 r . r . r .
+Turn: player_0
+  0 1 2 3 4 5
+0 . b . b . b
+1 b . b . . .
+2 . . . . . b
+3 . . . . r .
+4 . r . r . r
+5 r . . . r .
+Turn: player_1
+  0 1 2 3 4 5
+0 . b . b . .
+1 b . b . b .
+2 . . . . . b
+3 . . . . r .
+4 . r . r . r
+5 r . . . r .
+Turn: player_0
+  0 1 2 3 4 5
+0 . b . b . .
+1 b . b . b .
+2 . . . r . b
+3 . . . . . .
+4 . r . r . r
+5 r . . . r .
+Turn: player_1
+  0 1 2 3 4 5
+0 . b . b . .
+1 b . . . b .
+2 . . . . . b
+3 . . . . b .
+4 . r . r . r
+5 r . . . r .
+Game over
+Episode finished in 6 steps
+Final rewards: {'player_0': -1.0, 'player_1': 1.0}

@@ -60,7 +60,7 @@ Expected output during/after training:
 
 This satisfies the sample trained run requirement and logs cumulative rewards across episodes.
 
-1. python myrunner.py --mode trained --model_path ac_selfplay_weights.npz --episodes 10 --max_steps 300 --render_mode human --log_path trained_sample_run.log
+1. python myrunner.py --mode trained --model_path ac_selfplay_weights.npz --episodes 1000 --max_steps 300 --render_mode human --log_path trained_sample_run.log
 
 Use ac_selfplay_weights.npz if you ran full training.
 

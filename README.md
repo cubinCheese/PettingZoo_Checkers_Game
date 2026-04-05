@@ -184,3 +184,8 @@ for agent in game.agent_iter():
 - Promotion occurs automatically when a man reaches the opposite end row.
 - Multi-jump capture turns are handled automatically by keeping the same current agent.
 
+### Afterthought
+
+- Forgotten mentions: AEC API would have made turn-based control easier (for this project) due to existing framework infrastructure, but by using Parallel API it was easier to mentally visualize the model, that is the game environment / progression as a whole.
+- Added an adaptor for Parallel API --> AEC API (this works because we already implemented turn-based controlling). 
+- This was a good learning experience, but please take advantage of pre-existing tools next time.

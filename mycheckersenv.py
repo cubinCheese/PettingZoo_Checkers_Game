@@ -6,6 +6,7 @@ from gymnasium.spaces import Box, Dict, Discrete, MultiBinary
 from gymnasium.utils import seeding
 
 from pettingzoo import ParallelEnv
+from pettingzoo.utils.conversions import parallel_to_aec
 
 
 class CustomEnvironment(ParallelEnv):
@@ -380,3 +381,12 @@ class CustomEnvironment(ParallelEnv):
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
         return self.action_spaces[agent]
+
+
+def parallel_env(render_mode=None, max_moves=200):
+    return CustomEnvironment(render_mode=render_mode, max_moves=max_moves)
+
+
+def env(render_mode=None, max_moves=200):
+    # Minimal AEC adapter over the existing parallel implementation.
+    return parallel_to_aec(parallel_env(render_mode=render_mode, max_moves=max_moves))

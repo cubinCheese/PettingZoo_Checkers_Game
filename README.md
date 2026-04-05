@@ -1,11 +1,11 @@
 # Custom Checkers
 
-This environment is a two-player, turn-based checkers-style game implemented with the PettingZoo Parallel API.
+This environment is a two-player, turn-based checkers-style game implemented with the PettingZoo Parallel API, with an AEC adapter entry point.
 
 ## Import
 
 ```python
-from mycheckersenv import CustomEnvironment
+from mycheckersenv import CustomEnvironment, env, parallel_env
 ```
 
 ## Environment Summary
@@ -14,6 +14,7 @@ from mycheckersenv import CustomEnvironment
 | --- | --- |
 | Actions | Discrete |
 | Parallel API | Yes |
+| AEC API | Yes (via adapter) |
 | Manual Control | No |
 | Agents | `['player_0', 'player_1']` |
 | Number of Agents | 2 |
@@ -139,11 +140,35 @@ while env.agents:
 		break
 ```
 
+### AEC API Example
+
+```python
+import numpy as np
+from mycheckersenv import env
+
+game = env(render_mode="human", max_moves=200)
+game.reset(seed=42)
+
+for agent in game.agent_iter():
+	observation, reward, termination, truncation, info = game.last()
+	if termination or truncation:
+		action = None
+	else:
+		legal_actions = np.flatnonzero(observation["action_mask"])
+		action = int(np.random.choice(legal_actions)) if legal_actions.size else 0
+	game.step(action)
+```
+
 ## API
 
 ### Class
 
 `class CustomEnvironment(ParallelEnv)`
+
+### Convenience Constructors
+
+- `parallel_env(render_mode=None, max_moves=200)` returns `CustomEnvironment`
+- `env(render_mode=None, max_moves=200)` returns AEC-wrapped environment via `parallel_to_aec`
 
 ### Core Methods
 

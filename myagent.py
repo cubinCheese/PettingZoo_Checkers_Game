@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from mycheckersenv import CustomEnvironment
+from mycheckersenv import env as aec_env
 
 
 @dataclass
@@ -26,15 +26,16 @@ class ACConfig:
 # The agent also maintains a pool of opponent snapshots for self-play training.
 class ActorCriticSelfPlay:
 	def __init__(self, env_cls, config: ACConfig):
-		self.env_cls = env_cls
+		self.env_fn = env_cls
 		self.cfg = config
 		self.rng = np.random.default_rng(config.seed)
 
-		probe_env = self.env_cls(render_mode=None)
-		obs, _ = probe_env.reset(seed=config.seed)
-		first_agent = probe_env.current_agent
+		probe_env = self.env_fn(render_mode=None)
+		probe_env.reset(seed=config.seed)
+		first_agent = probe_env.agent_selection
+		first_obs = probe_env.observe(first_agent)
 		self.num_actions = int(probe_env.action_space(first_agent).n)
-		self.state_dim = self._state_features(obs[first_agent], first_agent).shape[0]
+		self.state_dim = self._state_features(first_obs, first_agent).shape[0]
 
 		# Actor logits: for action a, score(a|s) = W[a] dot s + b[a]
 		self.actor_w = self.rng.normal(0.0, 0.01, size=(self.num_actions, self.state_dim))
@@ -144,11 +145,10 @@ class ActorCriticSelfPlay:
 
         # Main training loop
 		for ep in range(1, self.cfg.episodes + 1):
-			env = self.env_cls(render_mode=None, max_moves=self.cfg.max_steps_per_episode)
-			observations, _ = env.reset(seed=int(self.rng.integers(0, 10**9)))
+			env = self.env_fn(render_mode=None, max_moves=self.cfg.max_steps_per_episode)
+			env.reset(seed=int(self.rng.integers(0, 10**9)))
 
 			learner_agent = "player_0" if self.rng.random() < 0.5 else "player_1"
-			opponent_agent = "player_1" if learner_agent == "player_0" else "player_0"
 			opponent_snapshot = self._sample_opponent_snapshot()
 
 			ep_reward = 0.0
@@ -156,8 +156,13 @@ class ActorCriticSelfPlay:
             
             # Main game loop
 			while env.agents and steps < self.cfg.max_steps_per_episode:
-				agent = env.current_agent
-				obs = observations[agent]
+				agent = env.agent_selection
+				obs, _, terminated, truncated, _ = env.last()
+
+				if terminated or truncated:
+					env.step(None)
+					continue
+
 				legal_actions = np.flatnonzero(obs["action_mask"])
 
 				if legal_actions.size == 0:
@@ -176,15 +181,18 @@ class ActorCriticSelfPlay:
 						)
 						action = self._sample_action(probs, legal_actions)
 
-				next_observations, rewards, terminations, truncations, _ = env.step({agent: int(action)})
+				env.step(int(action))
+				rewards = env.rewards
+				terminations = env.terminations
+				truncations = env.truncations
 
 				done = any(terminations.values()) or any(truncations.values())
 
                 # If the acting agent is the learner, perform an update step using the observed transition.
 				if agent == learner_agent:
 					s = self._state_features(obs, agent)
-					if not done and env.agents:
-						s_next_obs = next_observations[learner_agent]
+					if not done and learner_agent in env.agents:
+						s_next_obs = env.observe(learner_agent)
 						s_next = self._state_features(s_next_obs, learner_agent)
 					else:
 						s_next = np.zeros_like(s)
@@ -200,7 +208,6 @@ class ActorCriticSelfPlay:
 
                 # Accumulate reward for the learner agent and move to the next step.
 				ep_reward += float(rewards.get(learner_agent, 0.0))
-				observations = next_observations
 				steps += 1
 
 				if done:
@@ -237,22 +244,28 @@ class ActorCriticSelfPlay:
 	def evaluate(self, episodes=50):
 		returns = []
 		for _ in range(episodes):
-			env = self.env_cls(render_mode=None, max_moves=self.cfg.max_steps_per_episode)
-			observations, _ = env.reset(seed=int(self.rng.integers(0, 10**9)))
+			env = self.env_fn(render_mode=None, max_moves=self.cfg.max_steps_per_episode)
+			env.reset(seed=int(self.rng.integers(0, 10**9)))
 			learner_agent = "player_0"
 			total = 0.0
 
 			while env.agents:
-				agent = env.current_agent
+				agent = env.agent_selection
+				obs, _, terminated, truncated, _ = env.last()
+
+				if terminated or truncated:
+					env.step(None)
+					continue
+
 				if agent == learner_agent:
-					action = self.act(observations[agent], agent)
+					action = self.act(obs, agent)
 				else:
-					legal = np.flatnonzero(observations[agent]["action_mask"])
+					legal = np.flatnonzero(obs["action_mask"])
 					action = int(legal[int(self.rng.integers(0, len(legal)))]) if legal.size else 0
 
-				observations, rewards, terminations, truncations, _ = env.step({agent: action})
-				total += float(rewards.get(learner_agent, 0.0))
-				if any(terminations.values()) or any(truncations.values()):
+				env.step(int(action))
+				total += float(env.rewards.get(learner_agent, 0.0))
+				if any(env.terminations.values()) or any(env.truncations.values()):
 					break
 
 			returns.append(total)
@@ -299,7 +312,7 @@ def main():
 		snapshot_interval=args.snapshot_interval,
 		seed=args.seed,
 	)
-	trainer = ActorCriticSelfPlay(CustomEnvironment, cfg)
+	trainer = ActorCriticSelfPlay(aec_env, cfg)
 
 	if args.load_path:
 		trainer.load(args.load_path)

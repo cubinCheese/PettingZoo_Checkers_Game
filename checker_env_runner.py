@@ -2,7 +2,7 @@ import numpy as np
 import sys
 from contextlib import redirect_stderr, redirect_stdout
 
-from mycheckersenv import CustomEnvironment
+from mycheckersenv import env as aec_env  # AEC API
 
 
 class Tee:
@@ -22,35 +22,41 @@ class Tee:
 # Provides a simple display of the environment (gameboard) at each step.
 # Uses a random legal-action policy - NOT AN AGENT
 def run_episode(seed=42, render_mode="human", max_steps=300):
-    env = CustomEnvironment(render_mode=render_mode)
-    observations, infos = env.reset(seed=seed)
+    env = aec_env(render_mode=render_mode)
+    env.reset(seed=seed)
 
     step_count = 0
-    last_rewards = {agent: 0.0 for agent in env.possible_agents}
+    total_rewards = {agent: 0.0 for agent in env.possible_agents}
 
     while env.agents and step_count < max_steps:
-        agent = env.current_agent
-        mask = observations[agent]["action_mask"]
+        agent = env.agent_selection
+        observation, _, terminated, truncated, _ = env.last()
+
+        if terminated or truncated:
+            env.step(None)
+            continue
+
+        mask = observation["action_mask"]
         legal_actions = np.flatnonzero(mask)
 
         if legal_actions.size == 0:
             # No legal actions should normally correspond to terminal logic in env.
-            actions = {agent: 0}
+            action = 0
         else:
             action = int(np.random.choice(legal_actions))
-            actions = {agent: action}
 
-        observations, rewards, terminations, truncations, infos = env.step(actions)
-        last_rewards = rewards
+        env.step(action)
+        for a, r in env.rewards.items():
+            total_rewards[a] += float(r)
         step_count += 1
 
-        if any(terminations.values()) or any(truncations.values()):
+        if any(env.terminations.values()) or any(env.truncations.values()):
             break
 
     # The winning player will have a reward of 1, the losing player will have a reward of -1,
     # if the game is truncated due to max_steps, both players will have a reward of 0.
     print(f"Episode finished in {step_count} steps")
-    print(f"Final rewards: {last_rewards}")
+    print(f"Total rewards: {total_rewards}")
 
 
 if __name__ == "__main__":

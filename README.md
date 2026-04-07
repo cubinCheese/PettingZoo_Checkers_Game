@@ -1,11 +1,11 @@
 # Custom Checkers
 
-This environment is a two-player, turn-based checkers-style game implemented with the PettingZoo Parallel API, with an AEC adapter entry point.
+This environment is a two-player, turn-based checkers-style game implemented with the PettingZoo AEC API.
 
 ## Import
 
 ```python
-from mycheckersenv import CustomEnvironment, env, parallel_env
+from mycheckersenv import CustomEnvironment, env
 ```
 
 ## Environment Summary
@@ -13,8 +13,7 @@ from mycheckersenv import CustomEnvironment, env, parallel_env
 | Item | Value |
 | --- | --- |
 | Actions | Discrete |
-| Parallel API | Yes |
-| AEC API | Yes (via adapter) |
+| AEC API | Yes |
 | Manual Control | No |
 | Agents | `['player_0', 'player_1']` |
 | Number of Agents | 2 |
@@ -114,32 +113,6 @@ The episode is truncated when:
 
 ## Usage
 
-### Parallel API Example
-
-```python
-import numpy as np
-from mycheckersenv import CustomEnvironment
-
-env = CustomEnvironment(render_mode="human", max_moves=200)
-observations, infos = env.reset(seed=42)
-
-while env.agents:
-	acting_agent = env.current_agent
-	mask = observations[acting_agent]["action_mask"]
-	legal_actions = np.flatnonzero(mask)
-
-	if legal_actions.size == 0:
-		actions = {acting_agent: 0}
-	else:
-		action = int(np.random.choice(legal_actions))
-		actions = {acting_agent: action}
-
-	observations, rewards, terminations, truncations, infos = env.step(actions)
-
-	if any(terminations.values()) or any(truncations.values()):
-		break
-```
-
 ### AEC API Example
 
 ```python
@@ -163,29 +136,22 @@ for agent in game.agent_iter():
 
 ### Class
 
-`class CustomEnvironment(ParallelEnv)`
+`class CustomEnvironment(AECEnv)`
 
 ### Convenience Constructors
 
-- `parallel_env(render_mode=None, max_moves=200)` returns `CustomEnvironment`
-- `env(render_mode=None, max_moves=200)` returns AEC-wrapped environment via `parallel_to_aec`
+- `env(render_mode=None, max_moves=200)` returns `CustomEnvironment`
 
 ### Core Methods
 
 - `reset(seed=None, options=None)`
-- `step(actions)`
+- `step(action)`
 - `render()`
 - `observation_space(agent)`
 - `action_space(agent)`
 
 ### Notes
 
-- `render_mode="human"` prints an ASCII board. Which I would recommend utilizing, if you are a human intending to visualize the behavior of this project.
+- `render_mode="human"` prints an ASCII board.
 - Promotion occurs automatically when a man reaches the opposite end row.
 - Multi-jump capture turns are handled automatically by keeping the same current agent.
-
-### Afterthought
-
-- Forgotten mentions: AEC API would have made turn-based control easier (for this project) due to existing framework infrastructure, but by using Parallel API it was easier to mentally visualize the model, that is the game environment / progression as a whole.
-- Added an adaptor for Parallel API --> AEC API (this works because we already implemented turn-based controlling). 
-- This was a good learning experience, but please take advantage of pre-existing tools next time.

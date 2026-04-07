@@ -1,9 +1,11 @@
 .PHONY: setup env-check train-smoke train-full run-trained run-trained-fast eval-only
 
+make all: setup env-check train-smoke train-full run-trained run-trained-fast eval-only
+
 setup:
 	python3.10 -m pip install -r requirements.txt
 
-env-check:
+env-check: # Verifies checkerenv
 	python3.10 checker_env_runner.py
 
 train-smoke:

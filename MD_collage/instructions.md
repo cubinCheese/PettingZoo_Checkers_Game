@@ -26,7 +26,7 @@ If your virtual environment python is in a different path, run the same install 
 
 This runs random legal actions and prints board progression.
 
-1. python checker_env_runner.py
+1. python checker_env_runner.py 
 
 Expected output:
 
@@ -89,7 +89,6 @@ This disables board rendering and prints only summaries.
 
 - ModuleNotFoundError for gymnasium or pettingzoo:
 	reinstall requirements.txt with the same python executable used to run scripts.
-- File not found for model weights:
-	train first with myagent.py, then pass the correct --model_path to myrunner.py.
+- Python versions can enforce at most (torch==2.8.0, tensorflow==2.19.0) with scikit-learn==auto
 - Command not found for a virtual environment python path:
 	use whichever python executable exists in your environment and run the same script commands.

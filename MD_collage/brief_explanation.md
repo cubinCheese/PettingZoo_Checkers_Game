@@ -21,11 +21,11 @@ Update logic:
 
 ## Self-Play Strategy
 - The learner trains against current and older policy snapshots.
-- This avoids overfitting to a single fixed opponent.
+- This avoids overfitting to a single fixed opponent (hopefully).
 
 ## Reducing Deterministic Behavior
-A key issue was repeated deterministic trajectories -- a major challenge I faced in our prior project.
-Drawing from that experience...
+A key issue was repeated deterministic trajectories -- a major challenge faced in our prior project.
+Drawing from that experience:
 - Trained evaluation now uses default decaying epsilon-greedy behavior across episodes.
 - This improves trajectory diversity and yields more realistic aggregate performance estimates.
 

@@ -5,11 +5,10 @@ import numpy as np
 from gymnasium.spaces import Box, Dict, Discrete, MultiBinary
 from gymnasium.utils import seeding
 
-from pettingzoo import ParallelEnv
-from pettingzoo.utils.conversions import parallel_to_aec
+from pettingzoo import AECEnv
 
 
-class CustomEnvironment(ParallelEnv):
+class CustomEnvironment(AECEnv):
     metadata = {
         "name": "custom_environment_v0",
         "render_modes": ["human"],
@@ -52,21 +51,31 @@ class CustomEnvironment(ParallelEnv):
         # Initialize other attributes
         self.board = None
         self.agents = []
-        self.current_agent = None
         self.forced_capture_piece = None
         self.num_moves = 0
         self.np_random = None
         self.np_random_seed = None
 
+        # Reset the environment
+        self.rewards = {agent: 0.0 for agent in self.possible_agents}
+        self._cumulative_rewards = {agent: 0.0 for agent in self.possible_agents}
+        self.terminations = {agent: False for agent in self.possible_agents}
+        self.truncations = {agent: False for agent in self.possible_agents}
+        self.infos = {agent: {} for agent in self.possible_agents}
+        self.agent_selection = self.possible_agents[0]
+
     # Helper methods for game logic: move generation, move execution, win condition checking, etc.
     def _build_action_tuples(self):
         actions = []
-        for sr in range(self.BOARD_SIZE):
-            for sc in range(self.BOARD_SIZE):
+        for start_row in range(self.BOARD_SIZE):
+            for start_col in range(self.BOARD_SIZE):
+
+                # Check all valid moves - dr, dc are the row and column deltas for the move
                 for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1), (-2, -2), (-2, 2), (2, -2), (2, 2)]:
-                    er, ec = sr + dr, sc + dc
-                    if 0 <= er < self.BOARD_SIZE and 0 <= ec < self.BOARD_SIZE:
-                        actions.append((sr, sc, er, ec))
+                    
+                    end_row, end_col = start_row + dr, start_col + dc     
+                    if 0 <= end_row < self.BOARD_SIZE and 0 <= end_col < self.BOARD_SIZE:
+                        actions.append((start_row, start_col, end_row, end_col))
         return actions
 
     # Game logic helper methods
@@ -122,10 +131,11 @@ class CustomEnvironment(ParallelEnv):
 
         # Simple moves are one step in a valid direction to an empty square. No jumping allowed.
         moves = []
-        for dr, dc in self._move_dirs(piece, agent):
-            nr, nc = row + dr, col + dc
-            if 0 <= nr < self.BOARD_SIZE and 0 <= nc < self.BOARD_SIZE and self.board[nr, nc] == self.EMPTY: # Ensure the landing square is on the board
-                moves.append((row, col, nr, nc))
+        # Check for simple moves in all valid directions
+        for delta_row, delta_col in self._move_dirs(piece, agent):  # dr, dc are the row and column deltas for the move
+            new_row, new_col = row + delta_row, col + delta_col     # new row and column after the move
+            if 0 <= new_row < self.BOARD_SIZE and 0 <= new_col < self.BOARD_SIZE and self.board[new_row, new_col] == self.EMPTY: # Ensure the landing square is on the board
+                moves.append((row, col, new_row, new_col))
         return moves
 
     # Generate all legal moves for a given agent
@@ -139,20 +149,20 @@ class CustomEnvironment(ParallelEnv):
             return self._capture_moves_from(fr, fc, agent)
 
         # Otherwise, check all pieces for captures first. If any captures are found, only those are legal.
-        for r in range(self.BOARD_SIZE):
-            for c in range(self.BOARD_SIZE):
-                if self._belongs_to(self.board[r, c], agent):
-                    captures.extend(self._capture_moves_from(r, c, agent))
+        for row in range(self.BOARD_SIZE):
+            for col in range(self.BOARD_SIZE):
+                if self._belongs_to(self.board[row, col], agent):
+                    captures.extend(self._capture_moves_from(row, col, agent))
 
         # If no captures are found, then generate simple moves for all pieces.
         if captures:
             return captures
 
         # No captures, so generate simple moves.
-        for r in range(self.BOARD_SIZE):
-            for c in range(self.BOARD_SIZE):
-                if self._belongs_to(self.board[r, c], agent):
-                    simples.extend(self._simple_moves_from(r, c, agent))
+        for row in range(self.BOARD_SIZE):
+            for col in range(self.BOARD_SIZE):
+                if self._belongs_to(self.board[row, col], agent):
+                    simples.extend(self._simple_moves_from(row, col, agent))
 
         return simples
 
@@ -204,7 +214,11 @@ class CustomEnvironment(ParallelEnv):
     def _action_mask(self, agent):
         # If the agent is not the current agent, then return an empty mask
         mask = np.zeros(len(self._action_tuples), dtype=np.int8)
-        if agent != self.current_agent:
+        if agent not in self.agents:
+            return mask
+        if agent != self.agent_selection:
+            return mask
+        if self.terminations.get(agent, False) or self.truncations.get(agent, False):
             return mask
 
         # Otherwise, generate the mask
@@ -213,16 +227,15 @@ class CustomEnvironment(ParallelEnv):
             mask[self._action_to_idx[move]] = 1
         return mask
 
-    # Retrieve the observations for all agents
-    def _build_observations(self):
-        current_player_idx = self.agent_name_mapping[self.current_agent]
+    def observe(self, agent):
+        current_agent = self.agent_selection
+        if current_agent not in self.agent_name_mapping:
+            current_agent = self.possible_agents[0]
+
         return {
-            agent: {
-                "board": self.board.copy(),
-                "action_mask": self._action_mask(agent),
-                "current_player": current_player_idx,
-            }
-            for agent in self.agents
+            "board": self.board.copy(),
+            "action_mask": self._action_mask(agent),
+            "current_player": self.agent_name_mapping[current_agent],
         }
 
     def reset(self, seed=None, options=None):
@@ -233,10 +246,10 @@ class CustomEnvironment(ParallelEnv):
         self.board = np.zeros((self.BOARD_SIZE, self.BOARD_SIZE), dtype=np.int8)
 
         # Initialize a 6x6 checkers setup on dark squares.
-        for r in [0, 1]:
-            for c in range(self.BOARD_SIZE):
-                if (r + c) % 2 == 1:
-                    self.board[r, c] = self.P2_MAN
+        for row in [0, 1]:
+            for col in range(self.BOARD_SIZE):
+                if (row + col) % 2 == 1:
+                    self.board[row, col] = self.P2_MAN
 
         # Player 0's pieces are at the bottom, player 1's pieces are at the top. Only dark squares are used for pieces.
         for r in [4, 5]:
@@ -245,109 +258,112 @@ class CustomEnvironment(ParallelEnv):
                     self.board[r, c] = self.P1_MAN
 
         # Player 0 starts first
-        self.current_agent = "player_0"
+        self.agent_selection = "player_0"
         self.forced_capture_piece = None
         self.num_moves = 0
-
-        # Build initial observations and infos to return from reset
-        observations = self._build_observations()
-        infos = {agent: {} for agent in self.agents}
+        self.rewards = {agent: 0.0 for agent in self.possible_agents}
+        self._cumulative_rewards = {agent: 0.0 for agent in self.possible_agents}
+        self.terminations = {agent: False for agent in self.possible_agents}
+        self.truncations = {agent: False for agent in self.possible_agents}
+        self.infos = {agent: {} for agent in self.possible_agents}
 
         # If render_mode is human, render the initial state after reset
         if self.render_mode == "human":
             self.render()
 
-        return observations, infos 
-
     # Perform one step of the game
-    def step(self, actions):
-        # If a user passes in actions with no agents, then just return empty observations, etc.
-        if not actions or len(self.agents) == 0:
-            self.agents = []
-            return {}, {}, {}, {}, {}
+    def step(self, action):
+        if not self.agents:
+            return
 
-        # If the current agent is already terminated or truncated, handle stepping a dead agent.
-        acting_agent = self.current_agent
+        acting_agent = self.agent_selection
+        if self.terminations[acting_agent] or self.truncations[acting_agent]:
+            self._was_dead_step(action)
+            return
+
+        self._cumulative_rewards[acting_agent] = 0.0
+        self._clear_rewards()
+
         other_agent = self._other_agent(acting_agent)
 
-        # Initialize rewards, terminations, truncations, and infos for all agents. These will be updated based on the action taken and the resulting game state.
-        rewards = {agent: 0.0 for agent in self.agents}
-        terminations = {agent: False for agent in self.agents}
-        truncations = {agent: False for agent in self.agents}
-        infos = {agent: {} for agent in self.agents}
-
         # Validate the action for the current agent.
-        action = actions.get(acting_agent, None)
-        if action is None or action < 0 or action >= len(self._action_tuples):
+        try:
+            action_int = int(action)
+        except (TypeError, ValueError):
+            action_int = -1
+
+        if action is None or action_int < 0 or action_int >= len(self._action_tuples):
             # Missing or invalid action is treated as an illegal move.
-            rewards[acting_agent] = -1.0
-            rewards[other_agent] = 1.0
-            terminations = {agent: True for agent in self.agents}
-            observations = self._build_observations()
-            self.agents = []
-            return observations, rewards, terminations, truncations, infos
+            self.rewards[acting_agent] = -1.0
+            self.rewards[other_agent] = 1.0
+            self.terminations = {agent: True for agent in self.possible_agents}
+            self.agent_selection = other_agent
+            self._accumulate_rewards()
+            if self.render_mode == "human":
+                self.render()
+            return
+
+        action = action_int
 
         # Apply the action to the game state.
         move = self._action_tuples[action]
         legal_moves = self._all_legal_moves(acting_agent)
         if move not in legal_moves:
-            rewards[acting_agent] = -1.0
-            rewards[other_agent] = 1.0
-            terminations = {agent: True for agent in self.agents}
-            observations = self._build_observations()
-            self.agents = []
-            return observations, rewards, terminations, truncations, infos
+            self.rewards[acting_agent] = -1.0
+            self.rewards[other_agent] = 1.0
+            self.terminations = {agent: True for agent in self.possible_agents}
+            self.agent_selection = other_agent
+            self._accumulate_rewards()
+            if self.render_mode == "human":
+                self.render()
+            return
 
         # Apply the move
-        sr, sc, er, ec = move
-        piece = self.board[sr, sc]
-        self.board[sr, sc] = self.EMPTY
-        self.board[er, ec] = piece
+        start_row, start_col, end_row, end_col = move
+        piece = self.board[start_row, start_col]
+        self.board[start_row, start_col] = self.EMPTY
+        self.board[end_row, end_col] = piece
 
         # Check if the move was a capture and remove the captured piece if so.
-        was_capture = abs(er - sr) == 2
+        was_capture = abs(end_row - start_row) == 2
         if was_capture:
-            mr, mc = (sr + er) // 2, (sc + ec) // 2
+            mr, mc = (start_row + end_row) // 2, (start_col + end_col) // 2
             self.board[mr, mc] = self.EMPTY
 
-        self._promote_if_needed(er, ec)
+        self._promote_if_needed(end_row, end_col)
 
         self.num_moves += 1
 
         # Multi-jump: if more captures are available with the moved piece, the same agent plays again.
         if was_capture:
-            follow_up_captures = self._capture_moves_from(er, ec, acting_agent)
+            follow_up_captures = self._capture_moves_from(end_row, end_col, acting_agent)
             if follow_up_captures:
-                self.forced_capture_piece = (er, ec)
+                self.forced_capture_piece = (end_row, end_col)
+                next_agent = acting_agent
             else:
                 self.forced_capture_piece = None
-                self.current_agent = other_agent
+                next_agent = other_agent
         else:
             self.forced_capture_piece = None
-            self.current_agent = other_agent
+            next_agent = other_agent
         
         # Check if the game is over
         winner = self._get_winner()
         if winner is not None:
-            rewards[winner] = 1.0
-            rewards[self._other_agent(winner)] = -1.0
-            terminations = {agent: True for agent in self.agents}
+            self.rewards[winner] = 1.0
+            self.rewards[self._other_agent(winner)] = -1.0
+            self.terminations = {agent: True for agent in self.possible_agents}
 
         # Check if the game has reached the maximum number of moves
         if self.num_moves >= self.max_moves and winner is None:
-            truncations = {agent: True for agent in self.agents}
+            self.truncations = {agent: True for agent in self.possible_agents}
 
-        observations = self._build_observations()   # Update observations
-
-        # Remove the agent if the game is over
-        if any(terminations.values()) or any(truncations.values()):
-            self.agents = []
+        self.agent_selection = next_agent
+        self._accumulate_rewards()
 
         # If render_mode is human, render the updated state after the step
         if self.render_mode == "human":
             self.render()
-
-        return observations, rewards, terminations, truncations, infos
 
     def render(self):
         if self.render_mode is None:
@@ -370,7 +386,10 @@ class CustomEnvironment(ParallelEnv):
             row_chars = [piece_to_char[int(self.board[r, c])] for c in range(self.BOARD_SIZE)]
             rows.append(f"{r} " + " ".join(row_chars))
 
-        turn_info = f"Turn: {self.current_agent}" if self.agents else "Game over"
+        live = not all(
+            self.terminations[a] or self.truncations[a] for a in self.possible_agents
+        )
+        turn_info = f"Turn: {self.agent_selection}" if live else "Game over"
         print("\n".join(rows))
         print(turn_info)
 
@@ -383,10 +402,5 @@ class CustomEnvironment(ParallelEnv):
         return self.action_spaces[agent]
 
 
-def parallel_env(render_mode=None, max_moves=200):
-    return CustomEnvironment(render_mode=render_mode, max_moves=max_moves)
-
-
 def env(render_mode=None, max_moves=200):
-    # Minimal AEC adapter over the existing parallel implementation.
-    return parallel_to_aec(parallel_env(render_mode=render_mode, max_moves=max_moves))
+    return CustomEnvironment(render_mode=render_mode, max_moves=max_moves)

@@ -5,7 +5,7 @@ import sys
 from contextlib import redirect_stderr, redirect_stdout
 
 from myagent import ACConfig, ActorCriticSelfPlay
-from mycheckersenv import CustomEnvironment
+from mycheckersenv import env as aec_env
 
 
 class Tee:
@@ -24,29 +24,34 @@ class Tee:
 # Run a single episode of the environment with random actions, printing out the final rewards at the end.
 # Provides a simple display of the environment (gameboard) at each step.
 def run_episode(seed=42, render_mode="human", max_steps=300):
-    env = CustomEnvironment(render_mode=render_mode)
-    observations, infos = env.reset(seed=seed)
+    env = aec_env(render_mode=render_mode, max_moves=max_steps)
+    env.reset(seed=seed)
 
     step_count = 0
     last_rewards = {agent: 0.0 for agent in env.possible_agents}
 
     while env.agents and step_count < max_steps:
-        agent = env.current_agent
-        mask = observations[agent]["action_mask"]
+        agent = env.agent_selection
+        observation, _, terminated, truncated, _ = env.last()
+
+        if terminated or truncated:
+            env.step(None)
+            continue
+
+        mask = observation["action_mask"]
         legal_actions = np.flatnonzero(mask)
 
         if legal_actions.size == 0:
             # No legal actions should normally correspond to terminal logic in env.
-            actions = {agent: 0}
+            action = 0
         else:
             action = int(np.random.choice(legal_actions))
-            actions = {agent: action}
 
-        observations, rewards, terminations, truncations, infos = env.step(actions)
-        last_rewards = rewards
+        env.step(int(action))
+        last_rewards = {a: float(r) for a, r in env.rewards.items()}
         step_count += 1
 
-        if any(terminations.values()) or any(truncations.values()):
+        if any(env.terminations.values()) or any(env.truncations.values()):
             break
 
     # The winning player will have a reward of 1, the losing player will have a reward of -1,
@@ -59,21 +64,27 @@ def run_episode(seed=42, render_mode="human", max_steps=300):
 # Uses the provided policy to select actions, with an optional epsilon for exploration.
 def run_trained_episode(policy, seed=42, render_mode="human", max_steps=300, epsilon=0.0):
 
-    env = CustomEnvironment(render_mode=render_mode)
-    observations, infos = env.reset(seed=seed)
+    env = aec_env(render_mode=render_mode, max_moves=max_steps)
+    env.reset(seed=seed)
 
     step_count = 0
     last_rewards = {agent: 0.0 for agent in env.possible_agents}
 
     # Run the episode
     while env.agents and step_count < max_steps:
-        agent = env.current_agent
-        action = policy.act(observations[agent], agent, epsilon=epsilon)
-        observations, rewards, terminations, truncations, infos = env.step({agent: action})
-        last_rewards = rewards
+        agent = env.agent_selection
+        observation, _, terminated, truncated, _ = env.last()
+
+        if terminated or truncated:
+            env.step(None)
+            continue
+
+        action = policy.act(observation, agent, epsilon=epsilon)
+        env.step(int(action))
+        last_rewards = {a: float(r) for a, r in env.rewards.items()}
         step_count += 1
 
-        if any(terminations.values()) or any(truncations.values()):
+        if any(env.terminations.values()) or any(env.truncations.values()):
             break
     
     # The winning player will have a reward of 1, the losing player will have a reward of -1,
@@ -95,7 +106,7 @@ def run_many_episodes(mode, episodes, seed, render_mode, max_steps, model_path):
     # If using a trained policy, load the model before running episodes
     if mode == "trained":
         cfg = ACConfig(episodes=0, seed=seed)
-        policy = ActorCriticSelfPlay(CustomEnvironment, cfg)
+        policy = ActorCriticSelfPlay(aec_env, cfg)
         policy.load(model_path)
 
     # Run the episodes

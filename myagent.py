@@ -26,7 +26,7 @@ class ACConfig:
 # The agent also maintains a pool of opponent snapshots for self-play training.
 class ActorCriticSelfPlay:
 	def __init__(self, env_cls, config: ACConfig):
-		self.env_fn = env_cls
+		self.env_fn = env_cls # The environment class is passed in as a function that can be called to create new environment instances.
 		self.cfg = config
 		self.rng = np.random.default_rng(config.seed)
 
@@ -88,6 +88,11 @@ class ActorCriticSelfPlay:
 
     # The _masked_softmax method computes a softmax over the action logits, masking out illegal actions by assigning them a large negative value before exponentiating.
 	def _masked_softmax(self, logits, legal_actions):
+
+		# Mask out illegal actions.
+		if legal_actions.size == 0:
+			return np.zeros_like(logits, dtype=np.float64)
+
 		masked = np.full_like(logits, -1e9, dtype=np.float64)   # Mask illegal actions with large negative value.
 		masked[legal_actions] = logits[legal_actions]           # Assign logits to legal actions.
 		max_logit = np.max(masked[legal_actions])               # For numerical stability, subtract max logit before exponentiating.
@@ -122,6 +127,9 @@ class ActorCriticSelfPlay:
 		# Critic update (semi-gradient TD(0))
 		self.critic_v += self.cfg.critic_lr * td_error * s
 		self.critic_c += self.cfg.critic_lr * td_error
+
+		if legal_actions_s.size == 0:
+			return td_error
 
 		# Actor update: policy gradient with TD error as advantage.
 		probs = self._policy_probs(s, legal_actions_s, self.actor_w, self.actor_b)

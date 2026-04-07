@@ -6,4 +6,4 @@ pettingzoo
 typing_extensions
 torch==2.8.0
 tensorflow==2.19.0
-scikit-learn
+scikit-learn==1.8.0

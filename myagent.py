@@ -36,6 +36,7 @@ class ActorCriticSelfPlay:
 		first_obs = probe_env.observe(first_agent)
 		self.num_actions = int(probe_env.action_space(first_agent).n)
 		self.state_dim = self._state_features(first_obs, first_agent).shape[0]
+		probe_env.close()
 
 		# Actor logits: for action a, score(a|s) = W[a] dot s + b[a]
 		self.actor_w = self.rng.normal(0.0, 0.01, size=(self.num_actions, self.state_dim))
@@ -165,11 +166,14 @@ class ActorCriticSelfPlay:
             # Main game loop
 			while env.agents and steps < self.cfg.max_steps_per_episode:
 				agent = env.agent_selection
-				obs, _, terminated, truncated, _ = env.last()
+				terminated = bool(env.terminations.get(agent, False))
+				truncated = bool(env.truncations.get(agent, False))
 
 				if terminated or truncated:
 					env.step(None)
 					continue
+
+				obs = env.observe(agent)
 
 				legal_actions = np.flatnonzero(obs["action_mask"])
 
@@ -220,6 +224,8 @@ class ActorCriticSelfPlay:
 
 				if done:
 					break
+
+			env.close()
             
             # At the end of the episode, record the reward in the rolling window and periodically save snapshots and print progress.
 			rolling.append(ep_reward)
@@ -259,11 +265,14 @@ class ActorCriticSelfPlay:
 
 			while env.agents:
 				agent = env.agent_selection
-				obs, _, terminated, truncated, _ = env.last()
+				terminated = bool(env.terminations.get(agent, False))
+				truncated = bool(env.truncations.get(agent, False))
 
 				if terminated or truncated:
 					env.step(None)
 					continue
+
+				obs = env.observe(agent)
 
 				if agent == learner_agent:
 					action = self.act(obs, agent)
@@ -276,6 +285,7 @@ class ActorCriticSelfPlay:
 				if any(env.terminations.values()) or any(env.truncations.values()):
 					break
 
+			env.close()
 			returns.append(total)
 
 		mean_ret = float(np.mean(returns)) if returns else 0.0

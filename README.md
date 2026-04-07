@@ -96,8 +96,8 @@ Draw-like outcomes in this implementation return no winner and keep rewards at z
 If the acting agent provides a missing, out-of-range, or otherwise illegal action:
 
 - acting agent reward: `-1`
-- opponent reward: `+1`
-- both agents are terminated immediately
+- opponent reward: `0`
+- turn passes to the other agent
 
 ## End Conditions
 
@@ -105,7 +105,6 @@ The episode terminates if any of the following occurs:
 
 - one player has no remaining pieces
 - one player has no legal moves
-- an illegal action is taken
 
 The episode is truncated when:
 
@@ -140,7 +139,8 @@ for agent in game.agent_iter():
 
 ### Convenience Constructors
 
-- `env(render_mode=None, max_moves=200)` returns `CustomEnvironment`
+- `raw_env(render_mode=None, max_moves=200)` returns `CustomEnvironment`
+- `env(render_mode=None, max_moves=200)` returns wrapped AEC env (`AssertOutOfBoundsWrapper` + `OrderEnforcingWrapper`)
 
 ### Core Methods
 

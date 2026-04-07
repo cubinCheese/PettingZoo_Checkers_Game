@@ -6,6 +6,8 @@ from gymnasium.spaces import Box, Dict, Discrete, MultiBinary
 from gymnasium.utils import seeding
 
 from pettingzoo import AECEnv
+from pettingzoo.utils import wrappers
+from pettingzoo.utils.agent_selector import agent_selector
 
 
 class CustomEnvironment(AECEnv):
@@ -63,6 +65,37 @@ class CustomEnvironment(AECEnv):
         self.truncations = {agent: False for agent in self.possible_agents}
         self.infos = {agent: {} for agent in self.possible_agents}
         self.agent_selection = self.possible_agents[0]
+        self._agent_selector = None
+
+    def _rebuild_agent_selector(self, start_agent=None):
+        if not self.agents:
+            self._agent_selector = None
+            self.agent_selection = None
+            return
+
+        ordered_agents = self.agents[:]
+        if start_agent in ordered_agents:
+            idx = ordered_agents.index(start_agent)
+            ordered_agents = ordered_agents[idx:] + ordered_agents[:idx]
+
+        self._agent_selector = agent_selector(ordered_agents)
+        self.agent_selection = self._agent_selector.next()
+
+    def _prune_done_agents(self):
+        previous_selection = self.agent_selection
+        self.agents = [
+            agent
+            for agent in self.agents
+            if not (self.terminations[agent] or self.truncations[agent])
+        ]
+
+        if not self.agents:
+            self._agent_selector = None
+            self.agent_selection = None
+            return
+
+        start_agent = previous_selection if previous_selection in self.agents else self.agents[0]
+        self._rebuild_agent_selector(start_agent=start_agent)
 
     # Helper methods for game logic: move generation, move execution, win condition checking, etc.
     def _build_action_tuples(self):
@@ -266,10 +299,13 @@ class CustomEnvironment(AECEnv):
         self.terminations = {agent: False for agent in self.possible_agents}
         self.truncations = {agent: False for agent in self.possible_agents}
         self.infos = {agent: {} for agent in self.possible_agents}
+        self._rebuild_agent_selector(start_agent="player_0")
 
         # If render_mode is human, render the initial state after reset
         if self.render_mode == "human":
             self.render()
+
+        return self.observe(self.agent_selection), self.infos[self.agent_selection]
 
     # Perform one step of the game
     def step(self, action):
@@ -279,6 +315,7 @@ class CustomEnvironment(AECEnv):
         acting_agent = self.agent_selection
         if self.terminations[acting_agent] or self.truncations[acting_agent]:
             self._was_dead_step(action)
+            self._prune_done_agents()
             return
 
         self._cumulative_rewards[acting_agent] = 0.0
@@ -293,11 +330,10 @@ class CustomEnvironment(AECEnv):
             action_int = -1
 
         if action is None or action_int < 0 or action_int >= len(self._action_tuples):
-            # Missing or invalid action is treated as an illegal move.
+            # Penalize illegal actions and pass the turn instead of hard-terminating.
             self.rewards[acting_agent] = -1.0
-            self.rewards[other_agent] = 1.0
-            self.terminations = {agent: True for agent in self.possible_agents}
-            self.agent_selection = other_agent
+            self.rewards[other_agent] = 0.0
+            self.agent_selection = self._agent_selector.next()
             self._accumulate_rewards()
             if self.render_mode == "human":
                 self.render()
@@ -309,10 +345,10 @@ class CustomEnvironment(AECEnv):
         move = self._action_tuples[action]
         legal_moves = self._all_legal_moves(acting_agent)
         if move not in legal_moves:
+            # Penalize illegal actions and pass the turn instead of hard-terminating.
             self.rewards[acting_agent] = -1.0
-            self.rewards[other_agent] = 1.0
-            self.terminations = {agent: True for agent in self.possible_agents}
-            self.agent_selection = other_agent
+            self.rewards[other_agent] = 0.0
+            self.agent_selection = self._agent_selector.next()
             self._accumulate_rewards()
             if self.render_mode == "human":
                 self.render()
@@ -358,7 +394,13 @@ class CustomEnvironment(AECEnv):
         if self.num_moves >= self.max_moves and winner is None:
             self.truncations = {agent: True for agent in self.possible_agents}
 
-        self.agent_selection = next_agent
+        if any(self.terminations.values()) or any(self.truncations.values()):
+            self._prune_done_agents()
+        elif next_agent == acting_agent:
+            self.agent_selection = acting_agent
+        else:
+            self.agent_selection = self._agent_selector.next()
+
         self._accumulate_rewards()
 
         # If render_mode is human, render the updated state after the step
@@ -393,6 +435,9 @@ class CustomEnvironment(AECEnv):
         print("\n".join(rows))
         print(turn_info)
 
+    def close(self):
+        return None
+
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
         return self.observation_spaces[agent]
@@ -402,5 +447,12 @@ class CustomEnvironment(AECEnv):
         return self.action_spaces[agent]
 
 
-def env(render_mode=None, max_moves=200):
+def raw_env(render_mode=None, max_moves=200):
     return CustomEnvironment(render_mode=render_mode, max_moves=max_moves)
+
+
+def env(render_mode=None, max_moves=200):
+    environment = raw_env(render_mode=render_mode, max_moves=max_moves)
+    environment = wrappers.AssertOutOfBoundsWrapper(environment)
+    environment = wrappers.OrderEnforcingWrapper(environment)
+    return environment

@@ -1,4 +1,4 @@
-# CS272 PA2 - Custom Checkers Environment Report
+# CS272 PA2 - Custom Checkers Environment Report (AEC Refactor)
 
 ## 1) Public GitHub Repository
 
@@ -8,7 +8,7 @@ Project repository (clickable):
 
 ## 2) Sample Run with Trained Agents (Board State Progression)
 
-Source: trained_sample_run.log
+Source: test_results/trained_sample_run.log
 
 ```text
 Loaded model from ac_selfplay_weights.npz
@@ -61,29 +61,16 @@ Final rewards: {'player_0': 1.0, 'player_1': -1.0}
 | Metric | Value |
 |---|---|
 | Total episodes | 1000 |
-| Total steps | 41706 |
-| Cumulative final reward (player_0) | +743.000 |
-| Cumulative final reward (player_1) | -743.000 |
+| Total steps | 46403 |
+| Cumulative final reward (player_0) | +727.000 |
+| Cumulative final reward (player_1) | -727.000 |
 | Epsilon schedule | start 0.200, end 0.020, decay 0.995, final 0.020 |
-| Win counts | player_0: 849, player_1: 106, draw: 45 |
+| Win counts | player_0: 847, player_1: 120, draw: 33 |
+
+These values should be regenerated if training or evaluation settings change.
 
 ## 4) Brief Explanation of Agent Logic and Function Approximation Design Choices
 
-The agent is a self-play Actor-Critic model for 6x6 checkers with one shared policy for both players.
-
-Key design choices:
-
-- Player-centered observation transform:
-  - For player_1 turns, board perspective is normalized (flip/sign convention) so one model can learn consistently from either side.
-- Linear function approximation:
-  - Actor: linear policy head with masked softmax so illegal moves get zero probability.
-  - Critic: linear state-value estimator.
-- Learning signal:
-  - Critic uses TD(0).
-  - Actor uses policy-gradient updates weighted by TD advantage.
-- Self-play strategy:
-  - Trains against current and older policy snapshots to reduce overfitting to a fixed opponent.
-- Evaluation stability:
-  - Uses decaying epsilon-greedy during trained evaluation to reduce deterministic trajectories and improve robustness.
+The project uses a self-play Actor-Critic agent for 6x6 checkers with one shared policy for both players. Observations are converted to a player-centered view by flipping and sign-adjusting the board for player_1, so the same model can learn both sides consistently. The actor is a linear policy head with masked softmax over legal moves only, and the critic is a linear state-value estimator. Learning uses TD(0) updates for the critic and policy-gradient updates weighted by TD error for the actor. Training uses snapshot self-play: the learner competes against frozen historical versions of itself, which reduces overfitting to a single opponent. Trained evaluation applies decaying epsilon-greedy exploration to avoid repeated deterministic trajectories and produce more realistic aggregate results.
 
 Reference source in project: brief_explanation.md

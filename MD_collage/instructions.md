@@ -33,7 +33,7 @@ Expected output:
 - Repeated board states in terminal
 - Turn lines for player_0 and player_1
 - Game over line
-- Final rewards line
+- Total rewards line
 
 The output is also saved to checker_runner_output.log.
 
@@ -89,6 +89,7 @@ This disables board rendering and prints only summaries.
 
 - ModuleNotFoundError for gymnasium or pettingzoo:
 	reinstall requirements.txt with the same python executable used to run scripts.
-- Python versions can enforce at most (torch==2.8.0, tensorflow==2.19.0) with scikit-learn==auto
+- Package/version mismatch:
+	use the exact required versions in requirements.txt (torch==2.8.0, tensorflow==2.19.0, scikit-learn==1.8.0).
 - Command not found for a virtual environment python path:
 	use whichever python executable exists in your environment and run the same script commands.
